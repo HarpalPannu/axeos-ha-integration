@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure AxeOS",
+        "description": "Enter the host IP/URL for your AxeOS API.",
+        "data": {
+          "name": "Friendly Name (e.g., Bitaxe)",
+          "host": "Host URL (e.g., http://192.168.1.50)",
+          "scan_interval": "Update Interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to AxeOS API. Make sure the server is running and the URL is correct."
+    },
+    "abort": {
+      "already_configured": "This host is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure AxeOS Settings",
+        "description": "Modify the host URL and update interval for this AxeOS instance.",
+        "data": {
+          "host": "Host URL (e.g., http://192.168.1.50)",
+          "scan_interval": "Update Interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to AxeOS API. Make sure the server is running and the URL is correct."
+    }
+  }
+}
