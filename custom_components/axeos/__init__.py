@@ -1,4 +1,9 @@
-"""AxeOS Home Assistant Integration."""
+"""AxeOS Home Assistant Integration.
+
+Sets up the integration from a config entry, creates the shared data
+coordinator, and forwards setup to each entity platform (sensor, fan,
+switch, number, binary_sensor).
+"""
 
 import logging
 from datetime import timedelta
@@ -13,16 +18,21 @@ from .coordinator import AxeOSDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# All entity platforms this integration provides
 PLATFORMS = ["sensor", "switch", "fan", "binary_sensor", "number"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up AxeOS from a config entry."""
+    """Set up AxeOS from a config entry.
+
+    Creates an AxeOSDataCoordinator that polls the device, stores it
+    in hass.data, then forwards setup to each platform.
+    """
     hass.data.setdefault(DOMAIN, {})
 
     host = entry.options.get(CONF_HOST, entry.data.get(CONF_HOST))
-    info_url = f"{host.rstrip('/')}/api/system/info"
-    api_url = f"{host.rstrip('/')}/api/system"
+    info_url = f"{host.rstrip('/')}/api/system/info"  # GET endpoint (read-only)
+    api_url = f"{host.rstrip('/')}/api/system"        # PATCH endpoint (commands)
 
     scan_interval = entry.options.get(
         CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, 30)
@@ -33,19 +43,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, info_url, api_url, session, timedelta(seconds=scan_interval)
     )
 
+    # Perform the first data fetch; raises ConfigEntryNotReady on failure
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register options update listener
+    # Reload the integration whenever the user changes options
     entry.async_on_unload(entry.add_update_listener(update_listener))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry and clean up."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
@@ -53,5 +64,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
+    """Reload integration when options are changed (host, scan interval)."""
     await hass.config_entries.async_reload(entry.entry_id)

@@ -1,4 +1,10 @@
-"""AxeOS binary sensor platform."""
+"""AxeOS binary sensor platform.
+
+Provides a connectivity sensor that shows whether the Bitaxe device
+is reachable. Unlike other entities, this sensor overrides `available`
+to always return True so that HA shows "Off" (not "Unavailable") when
+the device goes offline.
+"""
 
 import logging
 
@@ -22,7 +28,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class AxeOSConnectivitySensor(AxeOSEntity, BinarySensorEntity):
-    """Connectivity sensor for AxeOS."""
+    """Shows whether the Bitaxe device is reachable on the network."""
 
     _attr_name = "Online"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
@@ -34,15 +40,15 @@ class AxeOSConnectivitySensor(AxeOSEntity, BinarySensorEntity):
 
     @property
     def is_on(self):
-        """Return true if the node is online."""
+        """Return True when the last API poll succeeded."""
         return self.coordinator.last_update_success
 
     @property
     def available(self):
-        """Always available so state shows Off when offline, not Unavailable."""
+        """Always return True so the sensor shows Off instead of Unavailable."""
         return True
 
     @property
     def icon(self):
-        """Return the icon to use in the frontend."""
+        """Show a connected or disconnected icon based on state."""
         return "mdi:lan-connect" if self.is_on else "mdi:lan-disconnect"

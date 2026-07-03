@@ -1,4 +1,13 @@
-"""Data coordinator for AxeOS integration."""
+"""Data coordinator for the AxeOS integration.
+
+Handles all communication with the Bitaxe device:
+  - Polls GET /api/system/info on a timer for live telemetry data.
+  - Sends PATCH /api/system commands (fan speed, toggles, etc.) with
+    concurrency protection via an asyncio.Lock.
+
+All entity platforms read from this single coordinator to minimise
+network traffic to the device.
+"""
 
 import logging
 import asyncio
@@ -11,13 +20,22 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AxeOSDataCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the AxeOS API."""
+    """Fetches data from the AxeOS API and provides a command interface."""
 
     def __init__(self, hass, url, api_url, session, update_interval):
-        """Initialize the data updater."""
-        self.url = url          # GET  /api/system/info
-        self.api_url = api_url  # PATCH /api/system
+        """Initialize the coordinator.
+
+        Args:
+            url: The GET endpoint for reading telemetry (/api/system/info).
+            api_url: The PATCH endpoint for sending commands (/api/system).
+            session: HA-managed aiohttp session.
+            update_interval: How often to poll the device.
+        """
+        self.url = url
+        self.api_url = api_url
         self.session = session
+        # Lock ensures rapid commands (e.g. two quick fan speed changes)
+        # are applied in order, not concurrently
         self._command_lock = asyncio.Lock()
 
         super().__init__(
@@ -28,10 +46,12 @@ class AxeOSDataCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch data from API endpoint.
+        """Fetch data from the device.
 
-        Raises UpdateFailed immediately on any error so that
+        Raises UpdateFailed on any error so that
         coordinator.last_update_success accurately reflects device state.
+        This is important because the energy sensor and uptime sensor
+        rely on last_update_success to detect offline periods.
         """
         try:
             async with asyncio.timeout(10):
@@ -42,11 +62,15 @@ class AxeOSDataCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
     async def async_send_command(self, payload):
-        """Send a PATCH command to the AxeOS API.
+        """Send a PATCH command to the device.
 
-        Uses an asyncio.Lock to serialise concurrent commands so rapid
-        user actions (e.g. sliding the fan speed twice) are applied in
-        order and the subsequent data refresh always reads the final state.
+        Uses an asyncio.Lock so that concurrent calls (e.g. user slides
+        the fan speed twice quickly) are serialised. After the command
+        succeeds, waits 3 seconds for the device to apply the change,
+        then triggers a data refresh so the UI updates immediately.
+
+        Args:
+            payload: Dict of key/value pairs to PATCH to the device.
         """
         async with self._command_lock:
             try:
@@ -61,6 +85,6 @@ class AxeOSDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to send command to AxeOS: %s", err)
                 raise
 
-            # Give the device time to apply the change, then refresh
+            # Device needs a moment to apply the change before we re-read
             await asyncio.sleep(3)
             await self.async_request_refresh()

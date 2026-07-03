@@ -1,4 +1,14 @@
-"""AxeOS sensor platform."""
+"""AxeOS sensor platform.
+
+Provides the following sensor types:
+  - AxeOSSensor: Generic sensor that reads a single key from API data.
+  - AxeOSBootTimeSensor: Calculates device boot time from uptime seconds.
+  - AxeOSEnergySensor: Accumulates kWh from power readings over time.
+  - AxeOSUptimePercentSensor: Tracks monthly availability percentage.
+
+The Energy and Uptime sensors use RestoreEntity to persist their values
+across Home Assistant restarts.
+"""
 
 import logging
 import time
@@ -26,18 +36,26 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entry_name = entry.title
 
     sensors = [
+        # Boot time (diagnostic) — computed from uptimeSeconds
         AxeOSBootTimeSensor(coordinator, entry_id, entry_name),
+        # Mining performance
         AxeOSSensor(coordinator, "hashRate", "Current Hashrate", "GH/s", "mdi:pickaxe", None, SensorStateClass.MEASUREMENT, entry_id, entry_name),
         AxeOSSensor(coordinator, "power", "Power", "W", "mdi:flash", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, entry_id, entry_name),
         AxeOSSensor(coordinator, "frequency", "ASIC Frequency", "MHz", "mdi:memory", SensorDeviceClass.FREQUENCY, SensorStateClass.MEASUREMENT, entry_id, entry_name),
+        # Temperatures
         AxeOSSensor(coordinator, "temp", "ASIC Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry_id, entry_name),
         AxeOSSensor(coordinator, "vrTemp", "VRM Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry_id, entry_name),
+        # Fan (diagnostic — the main fan entity is in fan.py)
         AxeOSSensor(coordinator, "fanrpm", "Fan RPM", "RPM", "mdi:fan", None, SensorStateClass.MEASUREMENT, entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        # Share counters
         AxeOSSensor(coordinator, "sharesAccepted", "Shares Accepted", "Shares", "mdi:check-circle", None, SensorStateClass.TOTAL_INCREASING, entry_id, entry_name),
         AxeOSSensor(coordinator, "sharesRejected", "Shares Rejected", "Shares", "mdi:close-circle", None, SensorStateClass.TOTAL_INCREASING, entry_id, entry_name),
+        # Network (diagnostic)
         AxeOSSensor(coordinator, "wifiRSSI", "WiFi RSSI", "dBm", "mdi:wifi", SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        # Best difficulty shares
         AxeOSSensor(coordinator, "bestDiff", "Best Share", None, "mdi:trophy", None, None, entry_id, entry_name),
         AxeOSSensor(coordinator, "bestSessionDiff", "Best Session Share", None, "mdi:trophy-award", None, None, entry_id, entry_name),
+        # Calculated sensors
         AxeOSEnergySensor(coordinator, entry_id, entry_name),
         AxeOSUptimePercentSensor(coordinator, entry_id, entry_name),
     ]
@@ -46,10 +64,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class AxeOSSensor(AxeOSEntity, SensorEntity):
-    """Generic AxeOS sensor that reads a key from coordinator data."""
+    """Generic sensor that maps a single API key to a HA sensor."""
 
     def __init__(self, coordinator, key, name, unit, icon, device_class, state_class, entry_id, entry_name, entity_category=None):
-        """Initialize the sensor."""
+        """Initialize the sensor.
+
+        Args:
+            key: The JSON key to read from the API response (e.g. "hashRate").
+            name: Display name suffix (HA prepends the device name).
+            unit: Unit of measurement (e.g. "GH/s", "W", "°C").
+            device_class: HA SensorDeviceClass for proper formatting.
+            state_class: HA SensorStateClass for statistics/history.
+            entity_category: Optional EntityCategory.DIAGNOSTIC to hide from main UI.
+        """
         super().__init__(coordinator, entry_id, entry_name)
         self._key = key
         self._attr_name = name
@@ -62,7 +89,7 @@ class AxeOSSensor(AxeOSEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
+        """Return the sensor value from API data, rounding floats to 2 decimals."""
         if not self.coordinator.data:
             return None
         val = self.coordinator.data.get(self._key)
@@ -72,11 +99,11 @@ class AxeOSSensor(AxeOSEntity, SensorEntity):
 
 
 class AxeOSBootTimeSensor(AxeOSEntity, SensorEntity):
-    """Boot time sensor — calculates when the device last started.
+    """Calculates when the device last booted.
 
-    The boot time is computed once on first update and only recalculated
-    when the uptime value decreases (indicating a device reboot), which
-    eliminates the timestamp drift caused by repeated recalculation.
+    The boot time is computed once from (now - uptimeSeconds) and only
+    recalculated when the uptime decreases (= the device rebooted).
+    This prevents the timestamp from drifting due to polling jitter.
     """
 
     _attr_name = "Boot Time"
@@ -89,14 +116,14 @@ class AxeOSBootTimeSensor(AxeOSEntity, SensorEntity):
         super().__init__(coordinator, entry_id, entry_name)
         self._attr_unique_id = f"{entry_id}_uptimeSeconds"
         self._boot_time = None
-        self._last_uptime = None
+        self._last_uptime = None  # Tracks previous uptime to detect reboots
 
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
+        """Recalculate boot time only on first read or after a reboot."""
         if self.coordinator.data:
             uptime = self.coordinator.data.get("uptimeSeconds")
             if uptime is not None:
-                # Only (re)calculate boot time on first reading or after reboot
+                # uptime < _last_uptime means the device rebooted
                 if self._last_uptime is None or uptime < self._last_uptime:
                     self._boot_time = (
                         datetime.datetime.now(datetime.timezone.utc)
@@ -107,17 +134,21 @@ class AxeOSBootTimeSensor(AxeOSEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return the computed boot time."""
+        """Return the computed boot time as a UTC datetime."""
         return self._boot_time
 
 
 class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
-    """Energy sensor that accumulates kWh from power readings.
+    """Accumulates energy consumption (kWh) from power readings.
 
-    Uses time.monotonic() for elapsed-time calculations (immune to NTP
-    clock adjustments), RestoreEntity to survive HA restarts without
-    resetting to zero, and real timestamps instead of dict-equality
-    checks so no polling interval is ever silently skipped.
+    How it works:
+      - On each coordinator update, reads the current power (watts).
+      - Multiplies power × elapsed seconds since last update to get
+        watt-seconds, then converts to kWh.
+      - Uses time.monotonic() so NTP clock adjustments don't cause errors.
+      - Skips accumulation when the device is offline.
+      - Caps elapsed time to 120s to ignore HA-downtime gaps.
+      - Uses RestoreEntity so the total survives HA restarts.
     """
 
     _attr_name = "Energy"
@@ -131,10 +162,10 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
         super().__init__(coordinator, entry_id, entry_name)
         self._attr_unique_id = f"{entry_id}_energy"
         self._energy_kwh = 0.0
-        self._last_update_time = None
+        self._last_update_time = None  # time.monotonic() of last successful poll
 
     async def async_added_to_hass(self) -> None:
-        """Restore previous energy total on HA restart."""
+        """Restore the previous energy total when HA restarts."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
@@ -144,7 +175,7 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
                 self._energy_kwh = 0.0
 
     def _handle_coordinator_update(self) -> None:
-        """Accumulate energy on each successful data fetch."""
+        """Accumulate energy on each successful poll."""
         current_time = time.monotonic()
 
         if self.coordinator.last_update_success and self.coordinator.data:
@@ -152,29 +183,33 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
 
             if power is not None and self._last_update_time is not None:
                 elapsed = current_time - self._last_update_time
-                # Only accumulate for normal polling gaps (≤ 2 min)
+                # Only count normal polling intervals (skip gaps > 2 min)
                 if 0 < elapsed <= 120:
+                    # energy (kWh) = power (W) × time (s) / 3,600,000
                     self._energy_kwh += (power * elapsed) / 3_600_000.0
 
             self._last_update_time = current_time
         elif not self.coordinator.last_update_success:
-            # Device offline — reset timer so the offline gap is never counted
+            # Device offline — reset timer so the offline gap isn't counted
             self._last_update_time = None
 
         super()._handle_coordinator_update()
 
     @property
     def native_value(self):
-        """Return the accumulated energy in kWh."""
+        """Return accumulated energy in kWh."""
         return round(self._energy_kwh, 6)
 
 
 class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
-    """Monthly uptime percentage sensor.
+    """Tracks monthly uptime as a percentage (like server SLA).
 
-    Tracks the ratio of successful polls to total monitored time within
-    the current calendar month. Resets automatically on month rollover
-    and persists its counters across HA restarts via RestoreEntity.
+    How it works:
+      - Counts total monitored seconds and total "online" seconds.
+      - A poll where last_update_success is True counts as online time.
+      - Resets both counters on the 1st of each month.
+      - Stores raw counters as extra_state_attributes so RestoreEntity
+        can recover them after an HA restart mid-month.
     """
 
     _attr_name = "Uptime Percentage"
@@ -187,15 +222,15 @@ class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, entry_id, entry_name)
         self._attr_unique_id = f"{entry_id}_uptime_percent"
-        self._total_monitored = 0.0
-        self._total_uptime = 0.0
-        self._last_time = None
+        self._total_monitored = 0.0   # Total seconds we've been tracking
+        self._total_uptime = 0.0      # Seconds the device was reachable
+        self._last_time = None        # time.monotonic() of last check
         now = datetime.datetime.now()
         self._current_year = now.year
         self._current_month = now.month
 
     async def async_added_to_hass(self) -> None:
-        """Restore previous counters on HA restart."""
+        """Restore counters from the last HA session."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
@@ -207,11 +242,11 @@ class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
                 pass
 
     def _handle_coordinator_update(self) -> None:
-        """Update uptime tracking counters."""
+        """Update uptime counters, resetting on month rollover."""
         current_time = time.monotonic()
         now = datetime.datetime.now()
 
-        # Reset counters on month rollover (tracks year too)
+        # Reset on the 1st of each month (tracks year to handle Dec→Jan)
         if (now.year, now.month) != (self._current_year, self._current_month):
             self._total_monitored = 0.0
             self._total_uptime = 0.0
@@ -220,7 +255,7 @@ class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
 
         if self._last_time is not None:
             elapsed = current_time - self._last_time
-            # Cap to 1 hour to ignore HA-offline gaps
+            # Ignore gaps > 1 hour (HA was likely shut down)
             if 0 < elapsed < 3600:
                 self._total_monitored += elapsed
                 if self.coordinator.last_update_success:
@@ -231,14 +266,14 @@ class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return the uptime percentage for the current month."""
+        """Return uptime as a percentage (0.00 – 100.00)."""
         if self._total_monitored == 0:
             return 100.0 if self.coordinator.last_update_success else 0.0
         return round((self._total_uptime / self._total_monitored) * 100.0, 2)
 
     @property
     def extra_state_attributes(self):
-        """Expose raw counters so they survive HA restarts via RestoreEntity."""
+        """Expose raw counters so they survive HA restarts."""
         return {
             "total_monitored_seconds": round(self._total_monitored, 1),
             "total_uptime_seconds": round(self._total_uptime, 1),

@@ -1,4 +1,10 @@
-"""AxeOS switch platform."""
+"""AxeOS switch platform.
+
+Provides toggle switches for device features that accept boolean
+values via the PATCH /api/system endpoint:
+  - Screen Sleep: Turns the physical OLED display on/off.
+  - Turn Off LED: Turns the onboard LED on/off.
+"""
 
 import logging
 
@@ -25,10 +31,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class AxeOSSwitch(AxeOSEntity, SwitchEntity):
-    """Generic AxeOS boolean switch."""
+    """Generic boolean switch that maps a single API key to a HA switch.
+
+    Reads the current state from the coordinator data and sends True/False
+    via the coordinator's async_send_command() on toggle.
+    """
 
     def __init__(self, coordinator, entry_id, entry_name, key, name, icon):
-        """Initialize the switch."""
+        """Initialize the switch.
+
+        Args:
+            key: The API JSON key this switch controls (e.g. "screenSleep").
+            name: Display name suffix.
+            icon: MDI icon string.
+        """
         super().__init__(coordinator, entry_id, entry_name)
         self._key = key
         self._attr_name = name
@@ -37,7 +53,7 @@ class AxeOSSwitch(AxeOSEntity, SwitchEntity):
 
     @property
     def is_on(self):
-        """Return true if the switch is on."""
+        """Return True if the switch is on. Handles both bool and int API values."""
         if not self.coordinator.data:
             return None
         val = self.coordinator.data.get(self._key)
@@ -46,9 +62,9 @@ class AxeOSSwitch(AxeOSEntity, SwitchEntity):
         return val == 1
 
     async def async_turn_on(self, **kwargs):
-        """Turn the entity on."""
+        """Turn the switch on."""
         await self.coordinator.async_send_command({self._key: True})
 
     async def async_turn_off(self, **kwargs):
-        """Turn the entity off."""
+        """Turn the switch off."""
         await self.coordinator.async_send_command({self._key: False})

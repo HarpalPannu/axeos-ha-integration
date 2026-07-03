@@ -1,4 +1,13 @@
-"""Config flow for AxeOS integration."""
+"""Config flow and options flow for the AxeOS integration.
+
+The config flow handles initial setup:
+  1. User enters a name, host URL, and polling interval.
+  2. The flow tests connectivity by hitting GET /api/system/info.
+  3. On success, creates a config entry; on failure, shows an error.
+
+The options flow lets users update the host URL and polling interval
+after initial setup. Changes trigger a full integration reload.
+"""
 
 import logging
 import asyncio
@@ -20,12 +29,14 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial step."""
+        """Handle the initial setup step."""
         errors = {}
         if user_input is not None:
             host = user_input[CONF_HOST].rstrip("/")
             name = user_input[CONF_NAME]
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, 30)
+
+            # Auto-prepend http:// if no scheme is provided
             if not host.startswith("http://") and not host.startswith("https://"):
                 host = f"http://{host}"
 
@@ -35,7 +46,7 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(host)
             self._abort_if_unique_id_configured()
 
-            # Test connectivity using HA's managed session
+            # Test connectivity using HA's managed session (not a raw aiohttp session)
             try:
                 session = async_get_clientsession(self.hass)
                 async with asyncio.timeout(10):
@@ -54,7 +65,7 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 errors["base"] = "cannot_connect"
 
-        # Default UI schema
+        # Show the setup form with default values
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_NAME, default="Bitaxe"): str,
@@ -77,7 +88,7 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class AxeOSOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for AxeOS."""
+    """Lets users change host and polling interval after initial setup."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -94,7 +105,7 @@ class AxeOSOptionsFlowHandler(config_entries.OptionsFlow):
 
             url = f"{host}/api/system/info"
 
-            # Validate using HA's managed session
+            # Validate the new URL before saving
             try:
                 session = async_get_clientsession(self.hass)
                 async with asyncio.timeout(10):
@@ -112,6 +123,7 @@ class AxeOSOptionsFlowHandler(config_entries.OptionsFlow):
             except Exception:
                 errors["base"] = "cannot_connect"
 
+        # Pre-fill with current values
         current_host = self._config_entry.options.get(
             CONF_HOST, self._config_entry.data.get(CONF_HOST, "http://192.168.1.50")
         )

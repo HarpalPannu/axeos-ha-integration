@@ -1,4 +1,12 @@
-"""AxeOS number platform."""
+"""AxeOS number platform.
+
+Provides a numeric slider for the target ASIC temperature. When the fan
+is in Auto mode, the Bitaxe tries to maintain this temperature by
+adjusting the fan speed automatically.
+
+The API may use "fanTemp" or "targetTemp" depending on firmware version,
+so we send both keys on writes and try both on reads.
+"""
 
 import logging
 
@@ -20,7 +28,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class AxeOSTargetTempNumber(AxeOSEntity, NumberEntity):
-    """Target temperature number control."""
+    """Slider to set the target ASIC temperature (30–90 °C)."""
 
     _attr_name = "Target Temperature"
     _attr_icon = "mdi:thermometer-auto"
@@ -36,11 +44,10 @@ class AxeOSTargetTempNumber(AxeOSEntity, NumberEntity):
 
     @property
     def native_value(self):
-        """Return the current target temperature.
+        """Return the current target temp from the API.
 
-        Returns None instead of a hardcoded fallback when the API
-        does not provide a value, so the UI shows 'Unknown' rather
-        than a potentially misleading default.
+        Tries "fanTemp" first, falls back to "targetTemp". Returns None
+        (not a hardcoded default) if neither key exists.
         """
         if not self.coordinator.data:
             return None
@@ -50,7 +57,10 @@ class AxeOSTargetTempNumber(AxeOSEntity, NumberEntity):
         return self.coordinator.data.get("targetTemp")
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the new target temperature."""
+        """Send the new target temperature to the device.
+
+        Sends both "fanTemp" and "targetTemp" to cover all firmware versions.
+        """
         await self.coordinator.async_send_command(
             {"fanTemp": int(value), "targetTemp": int(value)}
         )
