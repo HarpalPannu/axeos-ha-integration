@@ -144,19 +144,24 @@ class AxeOSEnergySensor(CoordinatorEntity, SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.coordinator.data and self.coordinator.data != self._last_processed_data:
+        import time
+        current_time = time.time()
+        
+        if self.coordinator.last_update_success and self.coordinator.data and self.coordinator.data != self._last_processed_data:
             power = self.coordinator.data.get("power")
-            import time
-            current_time = time.time()
             
             if power is not None and self._last_update_time is not None:
                 elapsed = current_time - self._last_update_time
-                if 0 < elapsed < 3600:
+                # Only calculate if the gap is a normal polling interval (e.g. <= 2 minutes)
+                if 0 < elapsed <= 120:
                     added_kwh = (power * elapsed) / 3600000.0
                     self._energy_kwh += added_kwh
                     
             self._last_update_time = current_time
             self._last_processed_data = self.coordinator.data
+        elif not self.coordinator.last_update_success:
+            # Device is offline. Reset the timer so we don't calculate energy for the offline gap.
+            self._last_update_time = None
             
         super()._handle_coordinator_update()
 
