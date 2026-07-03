@@ -51,7 +51,19 @@ class AxeOSFan(CoordinatorEntity, FanEntity):
     @property
     def supported_features(self):
         """Flag supported features."""
-        return FanEntityFeature.SET_SPEED
+        return FanEntityFeature.SET_SPEED | FanEntityFeature.PRESET_MODE
+
+    @property
+    def preset_modes(self):
+        """Return a list of available preset modes."""
+        return ["Auto", "Manual"]
+
+    @property
+    def preset_mode(self):
+        """Return the current preset mode."""
+        if not self.coordinator.data:
+            return None
+        return "Auto" if self.coordinator.data.get("autofanspeed") == 1 else "Manual"
 
     @property
     def is_on(self):
@@ -92,9 +104,18 @@ class AxeOSFan(CoordinatorEntity, FanEntity):
         else:
             await self._send_patch({"fanspeed": percentage})
 
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set the preset mode of the fan."""
+        if preset_mode == "Auto":
+            await self._send_patch({"autofanspeed": 1})
+        elif preset_mode == "Manual":
+            await self._send_patch({"autofanspeed": 0})
+
     async def async_turn_on(self, percentage: int = None, preset_mode: str = None, **kwargs) -> None:
         """Turn on the fan."""
-        if percentage is not None:
+        if preset_mode is not None:
+            await self.async_set_preset_mode(preset_mode)
+        elif percentage is not None:
             await self._send_patch({"fanspeed": percentage})
         else:
             await self._send_patch({"fanspeed": 100})
