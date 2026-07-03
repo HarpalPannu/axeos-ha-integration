@@ -218,11 +218,23 @@ class AxeOSUptimePercentSensor(CoordinatorEntity, SensorEntity):
         self._total_monitored_time = 0.0
         self._total_uptime = 0.0
         self._last_time = None
+        
+        import datetime
+        self._current_month = datetime.datetime.now().month
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         import time
+        import datetime
+        
         current_time = time.time()
+        current_month = datetime.datetime.now().month
+        
+        # Reset tracker if a new month has started
+        if current_month != getattr(self, '_current_month', current_month):
+            self._total_monitored_time = 0.0
+            self._total_uptime = 0.0
+            self._current_month = current_month
         
         if self._last_time is not None:
             elapsed = current_time - self._last_time
