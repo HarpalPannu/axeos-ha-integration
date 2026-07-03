@@ -2,6 +2,9 @@
 
 A custom Home Assistant integration for monitoring and controlling [Bitaxe](https://github.com/skot/bitaxe) Bitcoin miners running AxeOS.
 
+> [!CAUTION]
+> This is a **personal project** and is provided as-is. It comes with **no warranty** and **no responsibility** for any issues, data loss, or damage to your devices. Use at your own risk.
+
 Installable via [HACS](https://hacs.xyz/) as a custom repository.
 
 ## Features
