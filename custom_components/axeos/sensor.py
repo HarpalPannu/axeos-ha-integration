@@ -33,6 +33,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AxeOSSensor(coordinator, "bestDiff", "Best Share", None, "mdi:trophy", None, None, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "bestSessionDiff", "Best Session Share", None, "mdi:trophy-award", None, None, entry.entry_id, entry_name),
         AxeOSEnergySensor(coordinator, entry.entry_id, entry_name),
+        AxeOSUptimePercentSensor(coordinator, entry.entry_id, entry_name),
     ]
 
     async_add_entities(sensors, True)
@@ -203,4 +204,84 @@ class AxeOSEnergySensor(CoordinatorEntity, SensorEntity):
             manufacturer="Bitaxe",
             model="AxeOS",
             sw_version=self.coordinator.data.get("axeOSVersion", "Unknown") if self.coordinator.data else "Unknown",
+        )
+
+
+class AxeOSUptimePercentSensor(CoordinatorEntity, SensorEntity):
+    """Native implementation of an AxeOS Uptime Percentage sensor."""
+
+    def __init__(self, coordinator, entry_id, entry_name):
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._entry_id = entry_id
+        self._entry_name = entry_name
+        self._total_monitored_time = 0.0
+        self._total_uptime = 0.0
+        self._last_time = None
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        import time
+        current_time = time.time()
+        
+        if self._last_time is not None:
+            elapsed = current_time - self._last_time
+            # Cap elapsed to 1 hour to prevent huge jumps if HA was offline
+            if 0 < elapsed < 3600:
+                self._total_monitored_time += elapsed
+                if self.coordinator.last_update_success:
+                    self._total_uptime += elapsed
+                    
+        self._last_time = current_time
+        super()._handle_coordinator_update()
+
+    @property
+    def name(self):
+        """Return the formatted name of the sensor."""
+        return f"{self._entry_name} Uptime Percentage"
+
+    @property
+    def unique_id(self):
+        """Return a globally unique ID for the sensor."""
+        return f"{self._entry_id}_uptime_percent"
+
+    @property
+    def state(self):
+        """Return the state of the sensor."""
+        if self._total_monitored_time == 0:
+            return 100.0 if self.coordinator.last_update_success else 0.0
+        pct = (self._total_uptime / self._total_monitored_time) * 100.0
+        return round(pct, 2)
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return PERCENTAGE
+
+    @property
+    def icon(self):
+        """Return the icon to use in the frontend."""
+        return "mdi:percent-circle"
+
+    @property
+    def entity_category(self):
+        """Return the category of the entity."""
+        from homeassistant.helpers.entity import EntityCategory
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def state_class(self):
+        """Return the state class."""
+        from homeassistant.components.sensor import SensorStateClass
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device registry information for this entity."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._entry_name,
+            manufacturer="Bitaxe",
+            model="AxeOS",
+            sw_version=self.coordinator.data.get("axeOSVersion", "Unknown") if self.coordinator.data and isinstance(self.coordinator.data, dict) else "Unknown",
         )
