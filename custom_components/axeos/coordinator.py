@@ -1,5 +1,7 @@
+"""Data coordinator for AxeOS integration."""
+
 import logging
-import async_timeout
+import asyncio
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -7,14 +9,16 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-class AxeOSDataCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the API securely and efficiently."""
 
-    def __init__(self, hass, url, session, update_interval):
+class AxeOSDataCoordinator(DataUpdateCoordinator):
+    """Class to manage fetching data from the AxeOS API."""
+
+    def __init__(self, hass, url, api_url, session, update_interval):
         """Initialize the data updater."""
-        self.url = url
+        self.url = url          # GET  /api/system/info
+        self.api_url = api_url  # PATCH /api/system
         self.session = session
-        self._failed_attempts = 0
+        self._command_lock = asyncio.Lock()
 
         super().__init__(
             hass,
@@ -24,26 +28,39 @@ class AxeOSDataCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch data from API endpoint."""
+        """Fetch data from API endpoint.
+
+        Raises UpdateFailed immediately on any error so that
+        coordinator.last_update_success accurately reflects device state.
+        """
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with self.session.get(self.url) as response:
                     response.raise_for_status()
-                    data = await response.json()
-                    
-                    # Reset failure count on success
-                    if self._failed_attempts > 0:
-                        _LOGGER.info("Connection to AxeOS restored.")
-                        self._failed_attempts = 0
-                        
-                    return data
+                    return await response.json()
         except Exception as err:
-            self._failed_attempts += 1
-            if self._failed_attempts <= 5:
-                # Return last known data to tolerate transient drops
-                _LOGGER.debug("Transient API drop (%s/5): %s", self._failed_attempts, err)
-                if self.data:
-                    return self.data
-            
-            # After 5 failures, actually raise the error which marks entities as Unavailable
-            raise UpdateFailed(f"Error communicating with API: {err}")
+            raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+    async def async_send_command(self, payload):
+        """Send a PATCH command to the AxeOS API.
+
+        Uses an asyncio.Lock to serialise concurrent commands so rapid
+        user actions (e.g. sliding the fan speed twice) are applied in
+        order and the subsequent data refresh always reads the final state.
+        """
+        async with self._command_lock:
+            try:
+                async with asyncio.timeout(10):
+                    async with self.session.patch(
+                        self.api_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    ) as response:
+                        response.raise_for_status()
+            except Exception as err:
+                _LOGGER.error("Failed to send command to AxeOS: %s", err)
+                raise
+
+            # Give the device time to apply the change, then refresh
+            await asyncio.sleep(3)
+            await self.async_request_refresh()

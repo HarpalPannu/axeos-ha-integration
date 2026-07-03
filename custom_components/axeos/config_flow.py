@@ -1,15 +1,18 @@
+"""Config flow for AxeOS integration."""
+
 import logging
+import asyncio
 import voluptuous as vol
-import aiohttp
-import async_timeout
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_SCAN_INTERVAL
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for AxeOS."""
@@ -31,23 +34,23 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Prevent duplicate entries for the same host
             await self.async_set_unique_id(host)
             self._abort_if_unique_id_configured()
-            
-            # Test connectivity before saving configuration
+
+            # Test connectivity using HA's managed session
             try:
-                async with async_timeout.timeout(10):
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url) as response:
-                            if response.status == 200:
-                                await response.json()
-                                return self.async_create_entry(
-                                    title=name,
-                                    data={
-                                        CONF_HOST: host,
-                                        CONF_NAME: name,
-                                        CONF_SCAN_INTERVAL: scan_interval,
-                                    },
-                                )
-                            errors["base"] = "cannot_connect"
+                session = async_get_clientsession(self.hass)
+                async with asyncio.timeout(10):
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            await response.json()
+                            return self.async_create_entry(
+                                title=name,
+                                data={
+                                    CONF_HOST: host,
+                                    CONF_NAME: name,
+                                    CONF_SCAN_INTERVAL: scan_interval,
+                                },
+                            )
+                        errors["base"] = "cannot_connect"
             except Exception:
                 errors["base"] = "cannot_connect"
 
@@ -56,7 +59,9 @@ class AxeOSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_NAME, default="Bitaxe"): str,
                 vol.Required(CONF_HOST, default="http://192.168.1.50"): str,
-                vol.Required(CONF_SCAN_INTERVAL, default=30): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                vol.Required(CONF_SCAN_INTERVAL, default=30): vol.All(
+                    vol.Coerce(int), vol.Range(min=1)
+                ),
             }
         )
 
@@ -89,21 +94,21 @@ class AxeOSOptionsFlowHandler(config_entries.OptionsFlow):
 
             url = f"{host}/api/system/info"
 
-            # Validate the new URL
+            # Validate using HA's managed session
             try:
-                async with async_timeout.timeout(10):
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url) as response:
-                            if response.status == 200:
-                                await response.json()
-                                return self.async_create_entry(
-                                    title="",
-                                    data={
-                                        CONF_HOST: host,
-                                        CONF_SCAN_INTERVAL: scan_interval,
-                                    },
-                                )
-                            errors["base"] = "cannot_connect"
+                session = async_get_clientsession(self.hass)
+                async with asyncio.timeout(10):
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            await response.json()
+                            return self.async_create_entry(
+                                title="",
+                                data={
+                                    CONF_HOST: host,
+                                    CONF_SCAN_INTERVAL: scan_interval,
+                                },
+                            )
+                        errors["base"] = "cannot_connect"
             except Exception:
                 errors["base"] = "cannot_connect"
 
@@ -111,15 +116,18 @@ class AxeOSOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_HOST, self._config_entry.data.get(CONF_HOST, "http://192.168.1.50")
         )
         current_scan_interval = self._config_entry.options.get(
-            CONF_SCAN_INTERVAL, self._config_entry.data.get(CONF_SCAN_INTERVAL, 30)
+            CONF_SCAN_INTERVAL,
+            self._config_entry.data.get(CONF_SCAN_INTERVAL, 30),
         )
-        
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_HOST, default=current_host): str,
-                    vol.Required(CONF_SCAN_INTERVAL, default=current_scan_interval): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                    vol.Required(
+                        CONF_SCAN_INTERVAL, default=current_scan_interval
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
                 }
             ),
             errors=errors,
