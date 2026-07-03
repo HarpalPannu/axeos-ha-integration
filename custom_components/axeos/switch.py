@@ -22,7 +22,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     switches = [
         AxeOSAutoFanSwitch(coordinator, api_url, session, entry.entry_id, entry_name),
-        AxeOSGenericSwitch(coordinator, api_url, session, entry.entry_id, entry_name, "flipscreen", "Invert Screen", "mdi:monitor-cellphone-star"),
         AxeOSGenericSwitch(coordinator, api_url, session, entry.entry_id, entry_name, "screenSleep", "Screen Sleep", "mdi:monitor-off"),
         AxeOSGenericSwitch(coordinator, api_url, session, entry.entry_id, entry_name, "ledOff", "Turn Off LED", "mdi:led-off"),
     ]

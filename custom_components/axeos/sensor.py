@@ -20,7 +20,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entry_name = entry.title
 
     sensors = [
-        AxeOSSensor(coordinator, "uptimeSeconds", "Uptime", "s", "mdi:clock-start", SensorDeviceClass.DURATION, SensorStateClass.TOTAL_INCREASING, entry.entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        AxeOSSensor(coordinator, "uptimeSeconds", "Boot Time", None, "mdi:clock-start", SensorDeviceClass.TIMESTAMP, None, entry.entry_id, entry_name, EntityCategory.DIAGNOSTIC),
         AxeOSSensor(coordinator, "hashRate", "Current Hashrate", "GH/s", "mdi:pickaxe", None, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "power", "Power", "W", "mdi:flash", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "frequency", "ASIC Frequency", "MHz", "mdi:memory", SensorDeviceClass.FREQUENCY, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
@@ -59,6 +59,20 @@ class AxeOSSensor(CoordinatorEntity, SensorEntity):
         """Return the category of the entity."""
         return self._entity_category
 
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data and self._device_class == SensorDeviceClass.TIMESTAMP and self._key == "uptimeSeconds":
+            import datetime
+            uptime = self.coordinator.data.get(self._key)
+            if uptime is not None:
+                boot_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=uptime)
+                if not hasattr(self, '_boot_time') or not hasattr(self, '_last_uptime') or uptime < getattr(self, '_last_uptime', 0):
+                    self._boot_time = boot_time
+                elif abs((getattr(self, '_boot_time', boot_time) - boot_time).total_seconds()) > 60:
+                    self._boot_time = boot_time
+                self._last_uptime = uptime
+        super()._handle_coordinator_update()
+
     @property
     def name(self):
         """Return the formatted name of the sensor."""
@@ -74,6 +88,10 @@ class AxeOSSensor(CoordinatorEntity, SensorEntity):
         """Return the state of the sensor."""
         if not self.coordinator.data:
             return None
+            
+        if self._device_class == SensorDeviceClass.TIMESTAMP and self._key == "uptimeSeconds":
+            return getattr(self, '_boot_time', None)
+
         val = self.coordinator.data.get(self._key)
         if isinstance(val, float):
             return round(val, 2)
@@ -119,6 +137,27 @@ class AxeOSEnergySensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._entry_id = entry_id
         self._entry_name = entry_name
+        self._energy_kwh = 0.0
+        self._last_update_time = None
+        self._last_processed_data = None
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data and self.coordinator.data != self._last_processed_data:
+            power = self.coordinator.data.get("power")
+            import time
+            current_time = time.time()
+            
+            if power is not None and self._last_update_time is not None:
+                elapsed = current_time - self._last_update_time
+                if 0 < elapsed < 3600:
+                    added_kwh = (power * elapsed) / 3600000.0
+                    self._energy_kwh += added_kwh
+                    
+            self._last_update_time = current_time
+            self._last_processed_data = self.coordinator.data
+            
+        super()._handle_coordinator_update()
 
     @property
     def name(self):
@@ -133,17 +172,7 @@ class AxeOSEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the sensor."""
-        if not self.coordinator.data:
-            return None
-        power = self.coordinator.data.get("power")
-        uptime = self.coordinator.data.get("uptimeSeconds")
-        if power is None or uptime is None:
-            return None
-        
-        # Energy in kWh = Power (W) * Uptime (s) / 3,600,000
-        # This provides an accurate estimate since Bitaxe power draw is highly constant.
-        energy_kwh = (power * uptime) / 3600000.0
-        return round(energy_kwh, 4)
+        return round(self._energy_kwh, 6)
 
     @property
     def unit_of_measurement(self):
