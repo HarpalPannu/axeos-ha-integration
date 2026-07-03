@@ -7,7 +7,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -20,16 +20,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entry_name = entry.title
 
     sensors = [
-        AxeOSSensor(coordinator, "uptimeSeconds", "Uptime", "s", "mdi:clock-start", SensorDeviceClass.DURATION, SensorStateClass.TOTAL_INCREASING, entry.entry_id, entry_name),
+        AxeOSSensor(coordinator, "uptimeSeconds", "Uptime", "s", "mdi:clock-start", SensorDeviceClass.DURATION, SensorStateClass.TOTAL_INCREASING, entry.entry_id, entry_name, EntityCategory.DIAGNOSTIC),
         AxeOSSensor(coordinator, "hashRate", "Current Hashrate", "GH/s", "mdi:pickaxe", None, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "power", "Power", "W", "mdi:flash", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "frequency", "ASIC Frequency", "MHz", "mdi:memory", SensorDeviceClass.FREQUENCY, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "temp", "ASIC Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "vrTemp", "VRM Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
-        AxeOSSensor(coordinator, "fanrpm", "Fan RPM", "RPM", "mdi:fan", None, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
+        AxeOSSensor(coordinator, "fanrpm", "Fan RPM", "RPM", "mdi:fan", None, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name, EntityCategory.DIAGNOSTIC),
         AxeOSSensor(coordinator, "sharesAccepted", "Shares Accepted", "Shares", "mdi:check-circle", None, SensorStateClass.TOTAL_INCREASING, entry.entry_id, entry_name),
         AxeOSSensor(coordinator, "sharesRejected", "Shares Rejected", "Shares", "mdi:close-circle", None, SensorStateClass.TOTAL_INCREASING, entry.entry_id, entry_name),
-        AxeOSSensor(coordinator, "wifiRSSI", "WiFi RSSI", "dBm", "mdi:wifi", SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name),
+        AxeOSSensor(coordinator, "wifiRSSI", "WiFi RSSI", "dBm", "mdi:wifi", SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, entry.entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        AxeOSSensor(coordinator, "bestDiff", "Best Share", None, "mdi:trophy", None, None, entry.entry_id, entry_name),
+        AxeOSSensor(coordinator, "bestSessionDiff", "Best Session Share", None, "mdi:trophy-award", None, None, entry.entry_id, entry_name),
         AxeOSEnergySensor(coordinator, entry.entry_id, entry_name),
     ]
 
@@ -39,7 +41,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class AxeOSSensor(CoordinatorEntity, SensorEntity):
     """Native implementation of an AxeOS sensor using CoordinatorEntity."""
 
-    def __init__(self, coordinator, key, name, unit, icon, device_class, state_class, entry_id, entry_name):
+    def __init__(self, coordinator, key, name, unit, icon, device_class, state_class, entry_id, entry_name, entity_category=None):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._key = key
@@ -50,6 +52,12 @@ class AxeOSSensor(CoordinatorEntity, SensorEntity):
         self._state_class = state_class
         self._entry_id = entry_id
         self._entry_name = entry_name
+        self._entity_category = entity_category
+
+    @property
+    def entity_category(self):
+        """Return the category of the entity."""
+        return self._entity_category
 
     @property
     def name(self):

@@ -10,7 +10,7 @@ from .coordinator import AxeOSDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "switch", "fan", "binary_sensor"]
+PLATFORMS = ["sensor", "switch", "fan", "binary_sensor", "number"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up AxeOS from a config entry."""
