@@ -46,21 +46,26 @@ class AxeOSTargetTempNumber(AxeOSEntity, NumberEntity):
     def native_value(self):
         """Return the current target temp from the API.
 
-        Tries "fanTemp" first, falls back to "targetTemp". Returns None
-        (not a hardcoded default) if neither key exists.
+        Tries "temptarget" first, then "fanTemp", falls back to "targetTemp".
+        Returns None (not a hardcoded default) if none of the keys exist.
         """
         if not self.coordinator.data:
             return None
-        val = self.coordinator.data.get("fanTemp")
-        if val is not None:
-            return val
-        return self.coordinator.data.get("targetTemp")
+        for key in ("temptarget", "fanTemp", "targetTemp"):
+            val = self.coordinator.data.get(key)
+            if val is not None:
+                return val
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Send the new target temperature to the device.
 
-        Sends both "fanTemp" and "targetTemp" to cover all firmware versions.
+        Sends "temptarget", "fanTemp", and "targetTemp" to cover all firmware versions.
         """
         await self.coordinator.async_send_command(
-            {"fanTemp": int(value), "targetTemp": int(value)}
+            {
+                "temptarget": int(value),
+                "fanTemp": int(value),
+                "targetTemp": int(value),
+            }
         )

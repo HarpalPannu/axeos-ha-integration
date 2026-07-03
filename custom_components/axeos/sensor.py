@@ -156,6 +156,7 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = "kWh"
+    _attr_suggested_display_precision = 5
 
     def __init__(self, coordinator, entry_id, entry_name):
         """Initialize the sensor."""
@@ -171,6 +172,7 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._energy_kwh = float(last_state.state)
+                _LOGGER.debug("Restored energy value: %s kWh", self._energy_kwh)
             except (ValueError, TypeError):
                 self._energy_kwh = 0.0
 
@@ -185,12 +187,19 @@ class AxeOSEnergySensor(AxeOSEntity, RestoreEntity, SensorEntity):
                 elapsed = current_time - self._last_update_time
                 # Only count normal polling intervals (skip gaps > 2 min)
                 if 0 < elapsed <= 120:
-                    # energy (kWh) = power (W) × time (s) / 3,600,000
-                    self._energy_kwh += (power * elapsed) / 3_600_000.0
+                    added_kwh = (power * elapsed) / 3_600_000.0
+                    self._energy_kwh += added_kwh
+                    _LOGGER.debug(
+                        "Energy sensor updated. Power: %s W, Elapsed: %s s, Added: %s kWh, Total: %s kWh",
+                        power, round(elapsed, 2), round(added_kwh, 7), round(self._energy_kwh, 7)
+                    )
+                else:
+                    _LOGGER.debug("Skipping energy update: elapsed time %s s outside acceptable range", elapsed)
 
             self._last_update_time = current_time
         elif not self.coordinator.last_update_success:
             # Device offline — reset timer so the offline gap isn't counted
+            _LOGGER.debug("Device offline, resetting energy update timer")
             self._last_update_time = None
 
         super()._handle_coordinator_update()
