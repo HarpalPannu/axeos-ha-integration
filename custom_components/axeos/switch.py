@@ -62,6 +62,7 @@ class AxeOSAutoFanSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _send_patch(self, payload):
         """Send a PATCH request to the API."""
+        import asyncio
         try:
             async with async_timeout.timeout(10):
                 async with self._session.patch(
@@ -70,7 +71,10 @@ class AxeOSAutoFanSwitch(CoordinatorEntity, SwitchEntity):
                     headers={"Content-Type": "application/json"}
                 ) as response:
                     response.raise_for_status()
-                    await self.coordinator.async_request_refresh()
+            
+            # Wait 3 seconds for the ASIC to adjust before pulling the new data
+            await asyncio.sleep(3)
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to update AxeOS auto fan speed: %s", err)
 
