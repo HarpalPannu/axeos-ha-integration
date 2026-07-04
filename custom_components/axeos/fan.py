@@ -67,11 +67,12 @@ class AxeOSFan(AxeOSEntity, FanEntity):
         return int(self.coordinator.data.get("fanspeed", 0))
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the fan speed. Setting 0% turns the fan off."""
+        """Set the speed percentage of the fan."""
         if percentage == 0:
             await self.async_turn_off()
         else:
-            await self.coordinator.async_send_command({"fanspeed": percentage})
+            # Setting a speed percentage manually disables auto mode
+            await self.coordinator.async_send_command({"autofanspeed": 0, "fanspeed": percentage})
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Switch between Auto and Manual fan control."""
@@ -85,11 +86,14 @@ class AxeOSFan(AxeOSEntity, FanEntity):
         if preset_mode is not None:
             await self.async_set_preset_mode(preset_mode)
         elif percentage is not None:
-            await self.coordinator.async_send_command({"fanspeed": percentage})
+            if percentage == 0:
+                await self.async_turn_off()
+            else:
+                await self.coordinator.async_send_command({"autofanspeed": 0, "fanspeed": percentage})
         else:
-            # Default to 100% when no specific speed is given
+            # Default to 100% manual speed when turning on without speed/preset
             await self.coordinator.async_send_command({"fanspeed": 100})
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Turn the fan off by setting speed to 0."""
-        await self.coordinator.async_send_command({"fanspeed": 0})
+        """Turn the fan off by disabling auto mode and setting speed to 0."""
+        await self.coordinator.async_send_command({"autofanspeed": 0, "fanspeed": 0})
