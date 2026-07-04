@@ -47,6 +47,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AxeOSSensor(coordinator, "vrTemp", "VRM Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry_id, entry_name),
         # Fan (diagnostic — the main fan entity is in fan.py)
         AxeOSSensor(coordinator, "fanrpm", "Fan RPM", "RPM", "mdi:fan", None, SensorStateClass.MEASUREMENT, entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        AxeOSFanModeSensor(coordinator, entry_id, entry_name),
         # Share counters
         AxeOSSensor(coordinator, "sharesAccepted", "Shares Accepted", "Shares", "mdi:check-circle", None, SensorStateClass.TOTAL_INCREASING, entry_id, entry_name),
         AxeOSSensor(coordinator, "sharesRejected", "Shares Rejected", "Shares", "mdi:close-circle", None, SensorStateClass.TOTAL_INCREASING, entry_id, entry_name),
@@ -287,3 +288,23 @@ class AxeOSUptimePercentSensor(AxeOSEntity, RestoreEntity, SensorEntity):
             "total_monitored_seconds": round(self._total_monitored, 1),
             "total_uptime_seconds": round(self._total_uptime, 1),
         }
+
+
+class AxeOSFanModeSensor(AxeOSEntity, SensorEntity):
+    """Sensor that displays the current fan control mode (Auto/Manual)."""
+
+    _attr_name = "Fan Mode"
+    _attr_icon = "mdi:fan-auto"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry_id, entry_name):
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry_id, entry_name)
+        self._attr_unique_id = f"{entry_id}_fan_mode"
+
+    @property
+    def native_value(self):
+        """Return 'Auto' or 'Manual' based on autofanspeed."""
+        if not self.coordinator.data:
+            return None
+        return "Auto" if self.coordinator.data.get("autofanspeed") == 1 else "Manual"

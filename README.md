@@ -26,6 +26,7 @@ Installable via [HACS](https://hacs.xyz/) as a custom repository.
 | Uptime Percentage | % | Monthly availability (resets each month) |
 | WiFi RSSI | dBm | Wireless signal strength (diagnostic) |
 | Fan RPM | RPM | Current fan speed (diagnostic) |
+| Fan Mode | — | Current fan control mode (Auto or Manual, diagnostic) |
 
 ### Controls
 | Entity | Type | Description |
