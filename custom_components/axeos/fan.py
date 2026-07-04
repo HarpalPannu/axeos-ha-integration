@@ -31,7 +31,12 @@ class AxeOSFan(AxeOSEntity, FanEntity):
     """Fan entity for the Bitaxe cooling fan."""
 
     _attr_name = "Fan"
-    _attr_supported_features = FanEntityFeature.SET_SPEED | FanEntityFeature.PRESET_MODE
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.PRESET_MODE
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF
+    )
 
     def __init__(self, coordinator, entry_id, entry_name):
         """Initialize the fan."""
