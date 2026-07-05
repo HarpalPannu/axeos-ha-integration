@@ -47,6 +47,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AxeOSSensor(coordinator, "vrTemp", "VRM Temperature", "°C", "mdi:thermometer", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, entry_id, entry_name),
         # Fan (diagnostic — the main fan entity is in fan.py)
         AxeOSSensor(coordinator, "fanrpm", "Fan RPM", "RPM", "mdi:fan", None, SensorStateClass.MEASUREMENT, entry_id, entry_name, EntityCategory.DIAGNOSTIC),
+        AxeOSSensor(coordinator, "fanspeed", "Fan Speed", PERCENTAGE, "mdi:fan", None, SensorStateClass.MEASUREMENT, entry_id, entry_name, EntityCategory.DIAGNOSTIC),
         AxeOSFanModeSensor(coordinator, entry_id, entry_name),
         # Share counters
         AxeOSSensor(coordinator, "sharesAccepted", "Shares Accepted", "Shares", "mdi:check-circle", None, SensorStateClass.TOTAL_INCREASING, entry_id, entry_name),
