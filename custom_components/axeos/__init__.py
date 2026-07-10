@@ -2,7 +2,7 @@
 
 Sets up the integration from a config entry, creates the shared data
 coordinator, and forwards setup to each entity platform (sensor, fan,
-switch, number, binary_sensor).
+number, binary_sensor).
 """
 
 import logging
@@ -19,7 +19,7 @@ from .coordinator import AxeOSDataCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # All entity platforms this integration provides
-PLATFORMS = ["sensor", "switch", "fan", "binary_sensor", "number"]
+PLATFORMS = ["sensor", "fan", "binary_sensor", "number"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

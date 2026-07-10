@@ -34,8 +34,6 @@ Installable via [HACS](https://hacs.xyz/) as a custom repository.
 |--------|------|-------------|
 | Fan | Fan | Set fan speed (0–100%) with Auto/Manual preset modes |
 | Target Temperature | Number | Set target ASIC temperature (30–90 °C) |
-| Screen Sleep | Switch | Turn the OLED display on/off |
-| Turn Off LED | Switch | Turn the onboard LED on/off |
 
 ### Binary Sensors
 | Sensor | Description |
